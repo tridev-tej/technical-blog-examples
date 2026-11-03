@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job status demo</title>
+  <link rel="stylesheet" href="/frutjam.css">
+  <script src="/htmx.js" defer></script>
+  <style>
+    :root { --spacing: 0.25rem; }
+    body { margin: 0; }
+    main { max-width: 48rem; margin: 2rem auto; padding: 1rem; }
+    h1 { font-size: 2rem; font-weight: 650; }
+    main > * + * { margin-top: 1.25rem; }
+    #job-controls { display: flex; flex-wrap: wrap; gap: .75rem; }
+    #job-view p { margin-block: .5rem; }
+    code { overflow-wrap: anywhere; }
+    button:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Check a job without starting it again</h1>
+  <p>Demo only: one synthetic word-count job per server process. Updates are manual.</p>
+  <div id="job-controls" hx-target="#job-view" hx-swap="innerHTML"
+    hx-sync="#job-controls:drop" hx-request='{"timeout":2500}'>
+    <button id="start-job" type="button" class="btn btn-primary" hx-post="/jobs/demo">Start demo</button>
+    <button id="refresh-job" type="button" class="btn" hx-get="/jobs/demo/status">Refresh status</button>
+    <button id="unavailable-job" type="button" class="btn" hx-get="/jobs/demo/status?unavailable=1">Simulate unavailable status</button>
+  </div>
+  <p id="status-message" role="status" aria-atomic="true">Not started. Start demo creates one job.</p>
+  <section class="card" aria-labelledby="job-heading">
+    <div class="card-content">
+      <h2 id="job-heading" class="card-title">Current observation</h2>
+      <div id="job-view" aria-busy="false"><p>Not started.</p></div>
+    </div>
+  </section>
+  <p>Uncertain means the page could not read current state. It does not mean the worker stopped.</p>
+</main>
+<script>
+  const controls = document.getElementById('job-controls');
+  const view = document.getElementById('job-view');
+  const message = document.getElementById('status-message');
+  let knownJobID;
+
+  function say(text) {
+    if (message.textContent !== text) message.textContent = text;
+  }
+
+  function beforeRequest() {
+    view.setAttribute('aria-busy', 'true');
+  }
+
+  function configure(event) {
+    if (knownJobID) event.detail.parameters.jobID = knownJobID;
+  }
+
+  function afterSwap() {
+    const snapshot = view.querySelector('[data-job-id]');
+    knownJobID = snapshot.dataset.jobId;
+    delete view.dataset.observation;
+    say(view.querySelector('[data-summary]').textContent);
+    view.setAttribute('aria-busy', 'false');
+  }
+
+  function failed(event) {
+    const status = event.detail.xhr.status;
+    let text = 'Current status unavailable. Refresh status to check again. Work was not restarted.';
+    if (event.detail.elt.id === 'start-job') {
+      text = 'Start response unavailable. The job may have started. Use Refresh status to check.';
+    } else if (status === 404) {
+      text = 'No matching job exists in this server process. It may have restarted, or the job ID is unknown.';
+    } else if (status === 500) {
+      text = 'Server cannot confirm this job. Inspect server events. Work was not restarted.';
+    }
+    const badge = document.createElement('span');
+    badge.className = 'badge badge-warning';
+    badge.textContent = 'uncertain';
+    const detail = document.createElement('p');
+    detail.textContent = text;
+    view.replaceChildren(badge, detail);
+    view.dataset.observation = 'uncertain';
+    say(text);
+    view.setAttribute('aria-busy', 'false');
+  }
+
+  function afterRequest(event) {
+    view.setAttribute('aria-busy', 'false');
+    if (event.detail.xhr.status === 0 || event.detail.xhr.status >= 400) failed(event);
+  }
+
+  controls.addEventListener('htmx:configRequest', configure);
+  controls.addEventListener('htmx:beforeRequest', beforeRequest);
+  document.body.addEventListener('htmx:afterSwap', afterSwap);
+  controls.addEventListener('htmx:afterRequest', afterRequest);
+</script>
+</body>
+</html>

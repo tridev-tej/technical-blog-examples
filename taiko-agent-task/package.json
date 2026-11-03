@@ -1,0 +1,11 @@
+{
+  "name": "deterministic-taiko-lab",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test --test-concurrency=1 workflow.test.cjs"
+  },
+  "dependencies": {
+    "taiko": "1.5.0"
+  }
+}
